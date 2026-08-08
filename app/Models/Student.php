@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Models\Concerns\HasUuidV7;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Student extends Model
 {
@@ -45,4 +46,20 @@ class Student extends Model
     {
         return $this->hasMany(Enrollment::class);
     }
+	
+	public function addresses(): HasMany
+{
+    return $this->hasMany(StudentAddress::class);
+}
+
+	public function primaryAddress(): HasOne
+{
+    return $this->hasOne(StudentAddress::class)
+        ->where('is_primary', true);
+}
+
+public function geofenceAssignments(): HasMany
+{
+    return $this->hasMany(GeofenceStudentAssignment::class);
+}
 }

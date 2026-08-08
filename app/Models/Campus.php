@@ -56,4 +56,9 @@ class Campus extends Model
     {
         return $this->hasMany(Subject::class);
     }
+	
+	public function geofences(): HasMany
+{
+    return $this->hasMany(Geofence::class);
+}
 }
