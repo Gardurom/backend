@@ -61,4 +61,9 @@ class Campus extends Model
 {
     return $this->hasMany(Geofence::class);
 }
+
+public function userRoleAssignments(): HasMany
+{
+    return $this->hasMany(UserRoleAssignment::class);
+}
 }
