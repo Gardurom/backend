@@ -3,6 +3,11 @@
 namespace App\Http\Middleware;
 
 use App\Models\Campus;
+use App\Models\Geofence;
+use App\Models\SchoolGroup;
+use App\Models\Student;
+use App\Models\Subject;
+use App\Models\Teacher;
 use App\Services\AuthorizationService;
 use Closure;
 use Illuminate\Http\JsonResponse;
@@ -32,13 +37,13 @@ class RequirePermission
 
         $campusId = $this->resolveCampusId($request);
 
-        if (
-            ! $this->authorization->userHasPermission(
-                $user,
-                $permission,
-                $campusId
-            )
-        ) {
+        $hasPermission = $this->authorization->userHasPermission(
+            user: $user,
+            permission: $permission,
+            campusId: $campusId,
+        );
+
+        if (! $hasPermission) {
             return new JsonResponse([
                 'message' => 'No tienes permiso para realizar esta acción.',
             ], 403);
@@ -55,8 +60,37 @@ class RequirePermission
             return $routeCampus->id;
         }
 
-        if (is_string($routeCampus) && Str::isUuid($routeCampus)) {
+        if (
+            is_string($routeCampus)
+            && Str::isUuid($routeCampus)
+        ) {
             return $routeCampus;
+        }
+
+        $routeModels = [
+            $request->route('student'),
+            $request->route('teacher'),
+            $request->route('subject'),
+            $request->route('geofence'),
+        ];
+
+        foreach ($routeModels as $model) {
+            if (
+                $model instanceof Student
+                || $model instanceof Teacher
+                || $model instanceof Subject
+                || $model instanceof Geofence
+            ) {
+                return $model->campus_id;
+            }
+        }
+
+        $routeGroup = $request->route('schoolGroup');
+
+        if ($routeGroup instanceof SchoolGroup) {
+            return $routeGroup
+                ->schoolCycle()
+                ->value('campus_id');
         }
 
         $routeCampusId = $request->route('campus_id');
@@ -66,6 +100,15 @@ class RequirePermission
             && Str::isUuid($routeCampusId)
         ) {
             return $routeCampusId;
+        }
+
+        $attributeCampusId = $request->attributes->get('campus_id');
+
+        if (
+            is_string($attributeCampusId)
+            && Str::isUuid($attributeCampusId)
+        ) {
+            return $attributeCampusId;
         }
 
         $headerCampusId = $request->header('X-Campus-ID');
