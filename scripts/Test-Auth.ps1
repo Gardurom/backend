@@ -1,68 +1,108 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 $backendUrl = "http://127.0.0.1:8000"
 $frontendUrl = "http://localhost:4200"
 
-$global:webSession =
-    New-Object Microsoft.PowerShell.Commands.WebRequestSession
+$global:webSession = New-Object `
+    Microsoft.PowerShell.Commands.WebRequestSession
 
 $global:baseHeaders = @{
-    Accept = "application/json"
-    Origin = $frontendUrl
-    Referer = "$frontendUrl/"
+    "Accept" = "application/json"
+    "Origin" = $frontendUrl
+    "Referer" = "$frontendUrl/"
 }
 
-Write-Host "Solicitando cookie CSRF..."
+function Get-ErrorResponseBody {
+    param(
+        [Parameter(Mandatory = $true)]
+        $ErrorRecord
+    )
 
-Invoke-WebRequest `
-    -Uri "$backendUrl/sanctum/csrf-cookie" `
-    -Method Get `
-    -WebSession $global:webSession `
-    -Headers $global:baseHeaders |
-    Out-Null
+    try {
+        $response = $ErrorRecord.Exception.Response
 
-$cookies = $global:webSession.Cookies.GetCookies(
-    [Uri]$backendUrl
-)
+        if ($null -eq $response) {
+            return $ErrorRecord.Exception.Message
+        }
 
-$xsrfCookie = $cookies |
-    Where-Object { $_.Name -eq "XSRF-TOKEN" } |
-    Select-Object -First 1
+        $stream = $response.GetResponseStream()
+        $reader = New-Object System.IO.StreamReader($stream)
+        $body = $reader.ReadToEnd()
+        $reader.Dispose()
 
-if (-not $xsrfCookie) {
-    throw "Laravel no devolvió la cookie XSRF-TOKEN."
+        return $body
+    }
+    catch {
+        return $ErrorRecord.Exception.Message
+    }
 }
-
-$xsrfToken = [Uri]::UnescapeDataString(
-    $xsrfCookie.Value
-)
-
-$global:authHeaders = @{
-    Accept = "application/json"
-    Origin = $frontendUrl
-    Referer = "$frontendUrl/"
-    "X-XSRF-TOKEN" = $xsrfToken
-}
-
-$securePassword = Read-Host `
-    "Contraseña de admin@control-escolar.local" `
-    -AsSecureString
-
-$plainPassword = [System.Net.NetworkCredential]::new(
-    "",
-    $securePassword
-).Password
-
-$loginBody = @{
-    email = "admin@control-escolar.local"
-    password = $plainPassword
-    remember = $false
-} | ConvertTo-Json
 
 try {
-    Write-Host "Iniciando sesión..."
+    Write-Host "Solicitando cookie CSRF..." `
+        -ForegroundColor Cyan
 
-    $login = Invoke-RestMethod `
+    Invoke-WebRequest `
+        -Uri "$backendUrl/sanctum/csrf-cookie" `
+        -Method Get `
+        -WebSession $global:webSession `
+        -Headers $global:baseHeaders |
+        Out-Null
+
+    $xsrfCookie = $global:webSession.Cookies.GetCookies(
+        [Uri]$backendUrl
+    ) |
+        Where-Object {
+            $_.Name -eq "XSRF-TOKEN"
+        } |
+        Select-Object -First 1
+
+    if ($null -eq $xsrfCookie) {
+        throw "Laravel no devolvio la cookie XSRF-TOKEN."
+    }
+
+    $xsrfToken = [Uri]::UnescapeDataString(
+        $xsrfCookie.Value
+    )
+
+    $global:authHeaders = @{
+        "Accept" = "application/json"
+        "Origin" = $frontendUrl
+        "Referer" = "$frontendUrl/"
+        "X-XSRF-TOKEN" = $xsrfToken
+    }
+
+    $email = Read-Host "Correo"
+
+    $securePassword = Read-Host `
+        "Contrasena" `
+        -AsSecureString
+
+    $passwordPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR(
+        $securePassword
+    )
+
+    try {
+        $plainPassword = [Runtime.InteropServices.Marshal]::PtrToStringBSTR(
+            $passwordPointer
+        )
+    }
+    finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR(
+            $passwordPointer
+        )
+    }
+
+    $loginBody = @{
+        email = $email
+        password = $plainPassword
+    } | ConvertTo-Json
+
+    $plainPassword = $null
+
+    Write-Host "Iniciando sesion..." `
+        -ForegroundColor Cyan
+
+    $loginResponse = Invoke-RestMethod `
         -Uri "$backendUrl/api/auth/login" `
         -Method Post `
         -WebSession $global:webSession `
@@ -70,35 +110,54 @@ try {
         -ContentType "application/json" `
         -Body $loginBody
 
-    Write-Host $login.message
+    Write-Host $loginResponse.message `
+        -ForegroundColor Green
 
-    Write-Host "Comprobando autorización..."
+    
+    $xsrfCookie = $global:webSession.Cookies.GetCookies(
+        [Uri]$backendUrl
+    ) |
+        Where-Object {
+            $_.Name -eq "XSRF-TOKEN"
+        } |
+        Select-Object -First 1
 
-    $authorization = Invoke-RestMethod `
-        -Uri "$backendUrl/api/auth/authorization-check" `
-        -Method Get `
-        -WebSession $global:webSession `
-        -Headers $global:baseHeaders
-
-    Write-Host $authorization.message
-}
-catch {
-    if ($_.Exception.Response) {
-        $reader = New-Object System.IO.StreamReader(
-            $_.Exception.Response.GetResponseStream()
-        )
-
-        $errorBody = $reader.ReadToEnd()
-        $reader.Close()
-
-        Write-Host "Respuesta del servidor:"
-        Write-Host $errorBody
+    if ($null -eq $xsrfCookie) {
+        throw "No existe XSRF-TOKEN despues del login."
     }
 
-    throw
+    $global:authHeaders["X-XSRF-TOKEN"] =
+        [Uri]::UnescapeDataString($xsrfCookie.Value)
+
+    Write-Host "Verificando usuario autenticado..." `
+        -ForegroundColor Cyan
+
+    $meResponse = Invoke-RestMethod `
+        -Uri "$backendUrl/api/auth/me" `
+        -Method Get `
+        -WebSession $global:webSession `
+        -Headers $global:authHeaders
+
+    Write-Host ""
+    Write-Host "Autenticacion verificada correctamente." `
+        -ForegroundColor Green
+    Write-Host "Usuario: $($meResponse.user.name)"
+    Write-Host "Correo:  $($meResponse.user.email)"
+    Write-Host ""
+    Write-Host "La sesion permanece disponible en:" `
+        -ForegroundColor Yellow
+    Write-Host '  $global:webSession'
+    Write-Host '  $global:baseHeaders'
+    Write-Host '  $global:authHeaders'
 }
-finally {
-    $plainPassword = $null
-    $securePassword = $null
-    $loginBody = $null
+catch {
+    Write-Host ""
+    Write-Host "La prueba de autenticacion fallo." `
+        -ForegroundColor Red
+
+    Write-Host (
+        Get-ErrorResponseBody -ErrorRecord $_
+    ) -ForegroundColor Red
+
+    throw
 }

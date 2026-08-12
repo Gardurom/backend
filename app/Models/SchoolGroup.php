@@ -10,8 +10,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class SchoolGroup extends Model
 {
-    use HasUuidV7, SoftDeletes;
-
+    use HasUuidV7;
+    use SoftDeletes;
 
     protected $fillable = [
         'school_cycle_id',
@@ -51,12 +51,12 @@ class SchoolGroup extends Model
             'school_group_id'
         );
     }
-	
-	public function attendanceSessions(): HasMany
-{
-    return $this->hasMany(
-        AttendanceSession::class,
-        'school_group_id'
-    );
-}
+
+    public function attendanceSessions(): HasMany
+    {
+        return $this->hasMany(
+            AttendanceSession::class,
+            'school_group_id'
+        );
+    }
 }

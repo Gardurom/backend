@@ -17,6 +17,13 @@ return Application::configure(
     )
     ->withMiddleware(
         function (Middleware $middleware): void {
+            /*
+             * Permite autenticacion SPA mediante cookies de sesion
+             * con Laravel Sanctum.
+             *
+             * No se debe agregar el middleware "web" manualmente
+             * a las rutas API stateful.
+             */
             $middleware->statefulApi();
 
             $middleware->alias([

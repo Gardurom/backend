@@ -2,16 +2,16 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasUuidV7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use App\Models\Concerns\HasUuidV7;
 
 class Teacher extends Model
 {
-    use HasUuidV7, SoftDeletes;
-
+    use HasUuidV7;
+    use SoftDeletes;
 
     protected $fillable = [
         'person_id',
@@ -45,20 +45,20 @@ class Teacher extends Model
     {
         return $this->hasMany(TeachingAssignment::class);
     }
-	
-	public function gradedGrades(): HasMany
-{
-    return $this->hasMany(
-        Grade::class,
-        'graded_by_teacher_id'
-    );
-}
 
-public function recordedAttendanceSessions(): HasMany
-{
-    return $this->hasMany(
-        AttendanceSession::class,
-        'recorded_by_teacher_id'
-    );
-}
+    public function gradedGrades(): HasMany
+    {
+        return $this->hasMany(
+            Grade::class,
+            'graded_by_teacher_id'
+        );
+    }
+
+    public function recordedAttendanceSessions(): HasMany
+    {
+        return $this->hasMany(
+            AttendanceSession::class,
+            'recorded_by_teacher_id'
+        );
+    }
 }

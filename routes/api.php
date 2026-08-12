@@ -2,11 +2,12 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CampusController;
+use App\Http\Controllers\Api\SchoolGroupController;
 use App\Http\Controllers\Api\StudentController;
+use App\Http\Controllers\Api\TeacherController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware('web')
-    ->prefix('auth')
+Route::prefix('auth')
     ->group(function (): void {
         Route::post(
             '/login',
@@ -27,10 +28,7 @@ Route::middleware('web')
             });
     });
 
-Route::middleware([
-    'web',
-    'auth:sanctum',
-])
+Route::middleware('auth:sanctum')
     ->prefix('campuses')
     ->group(function (): void {
         Route::get(
@@ -64,10 +62,7 @@ Route::middleware([
         )->middleware('permission:campuses.delete');
     });
 
-Route::middleware([
-    'web',
-    'auth:sanctum',
-])
+Route::middleware('auth:sanctum')
     ->prefix('students')
     ->group(function (): void {
         Route::get(
@@ -105,4 +100,78 @@ Route::middleware([
             '/{student}',
             [StudentController::class, 'destroy']
         )->middleware('permission:students.delete');
+    });
+
+Route::middleware([
+    'auth:sanctum',
+    'campus',
+])
+    ->prefix('groups')
+    ->group(function (): void {
+        Route::get(
+            '/',
+            [SchoolGroupController::class, 'index']
+        )->middleware('permission:groups.view');
+
+        Route::post(
+            '/',
+            [SchoolGroupController::class, 'store']
+        )->middleware('permission:groups.create');
+
+        Route::get(
+            '/{schoolGroup}',
+            [SchoolGroupController::class, 'show']
+        )->middleware('permission:groups.view');
+
+        Route::put(
+            '/{schoolGroup}',
+            [SchoolGroupController::class, 'update']
+        )->middleware('permission:groups.update');
+
+        Route::patch(
+            '/{schoolGroup}',
+            [SchoolGroupController::class, 'update']
+        )->middleware('permission:groups.update');
+
+        Route::delete(
+            '/{schoolGroup}',
+            [SchoolGroupController::class, 'destroy']
+        )->middleware('permission:groups.delete');
+    });
+
+Route::middleware([
+    'auth:sanctum',
+    'campus',
+])
+    ->prefix('teachers')
+    ->group(function (): void {
+        Route::get(
+            '/',
+            [TeacherController::class, 'index']
+        )->middleware('permission:teachers.view');
+
+        Route::post(
+            '/',
+            [TeacherController::class, 'store']
+        )->middleware('permission:teachers.create');
+
+        Route::get(
+            '/{teacher}',
+            [TeacherController::class, 'show']
+        )->middleware('permission:teachers.view');
+
+        Route::put(
+            '/{teacher}',
+            [TeacherController::class, 'update']
+        )->middleware('permission:teachers.update');
+
+        Route::patch(
+            '/{teacher}',
+            [TeacherController::class, 'update']
+        )->middleware('permission:teachers.update');
+
+        Route::delete(
+            '/{teacher}',
+            [TeacherController::class, 'destroy']
+        )->middleware('permission:teachers.delete');
     });
