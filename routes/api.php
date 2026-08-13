@@ -4,7 +4,9 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CampusController;
 use App\Http\Controllers\Api\SchoolGroupController;
 use App\Http\Controllers\Api\StudentController;
+use App\Http\Controllers\Api\SubjectController;
 use App\Http\Controllers\Api\TeacherController;
+use App\Http\Controllers\Api\TeachingAssignmentController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')
@@ -174,4 +176,90 @@ Route::middleware([
             '/{teacher}',
             [TeacherController::class, 'destroy']
         )->middleware('permission:teachers.delete');
+    });
+
+Route::middleware([
+    'auth:sanctum',
+    'campus',
+])
+    ->prefix('subjects')
+    ->group(function (): void {
+        Route::get(
+            '/',
+            [SubjectController::class, 'index']
+        )->middleware('permission:subjects.view');
+
+        Route::post(
+            '/',
+            [SubjectController::class, 'store']
+        )->middleware('permission:subjects.create');
+
+        Route::get(
+            '/{subject}',
+            [SubjectController::class, 'show']
+        )->middleware('permission:subjects.view');
+
+        Route::put(
+            '/{subject}',
+            [SubjectController::class, 'update']
+        )->middleware('permission:subjects.update');
+
+        Route::patch(
+            '/{subject}',
+            [SubjectController::class, 'update']
+        )->middleware('permission:subjects.update');
+
+        Route::delete(
+            '/{subject}',
+            [SubjectController::class, 'destroy']
+        )->middleware('permission:subjects.delete');
+    });
+
+Route::middleware([
+    'auth:sanctum',
+    'campus',
+])
+    ->prefix('teaching-assignments')
+    ->group(function (): void {
+        Route::get(
+            '/',
+            [TeachingAssignmentController::class, 'index']
+        )->middleware(
+            'permission:teaching_assignments.view'
+        );
+
+        Route::post(
+            '/',
+            [TeachingAssignmentController::class, 'store']
+        )->middleware(
+            'permission:teaching_assignments.create'
+        );
+
+        Route::get(
+            '/{teachingAssignment}',
+            [TeachingAssignmentController::class, 'show']
+        )->middleware(
+            'permission:teaching_assignments.view'
+        );
+
+        Route::put(
+            '/{teachingAssignment}',
+            [TeachingAssignmentController::class, 'update']
+        )->middleware(
+            'permission:teaching_assignments.update'
+        );
+
+        Route::patch(
+            '/{teachingAssignment}',
+            [TeachingAssignmentController::class, 'update']
+        )->middleware(
+            'permission:teaching_assignments.update'
+        );
+
+        Route::delete(
+            '/{teachingAssignment}',
+            [TeachingAssignmentController::class, 'destroy']
+        )->middleware(
+            'permission:teaching_assignments.delete'
+        );
     });

@@ -6,7 +6,9 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\UserRoleAssignment;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\DB;
 
 class SecurityRbacSeeder extends Seeder
@@ -18,7 +20,9 @@ class SecurityRbacSeeder extends Seeder
             $roles = $this->createRoles();
 
             $rolePermissions = [
-                'super_admin' => ['*'],
+                'super_admin' => [
+                    '*',
+                ],
 
                 'school_admin' => [
                     'dashboard.view',
@@ -26,6 +30,7 @@ class SecurityRbacSeeder extends Seeder
                     'teachers.*',
                     'groups.*',
                     'subjects.*',
+                    'teaching_assignments.*',
                     'assessments.*',
                     'grades.*',
                     'attendance.*',
@@ -37,8 +42,8 @@ class SecurityRbacSeeder extends Seeder
                     'users.update',
                     'audit.view',
                     'audit.export',
-		    'campuses.view',
-		    'campuses.update',
+                    'campuses.view',
+                    'campuses.update',
                 ],
 
                 'teacher' => [
@@ -46,6 +51,7 @@ class SecurityRbacSeeder extends Seeder
                     'students.view',
                     'groups.view',
                     'subjects.view',
+                    'teaching_assignments.view',
                     'assessments.view',
                     'assessments.create',
                     'assessments.update',
@@ -83,24 +89,32 @@ class SecurityRbacSeeder extends Seeder
                 ],
             ];
 
-            foreach ($rolePermissions as $roleName => $patterns) {
+            foreach (
+                $rolePermissions as $roleName => $patterns
+            ) {
                 $permissionIds = $patterns === ['*']
                     ? $permissions->pluck('id')
                     : $permissions
-                        ->filter(function (
-                            Permission $permission
-                        ) use ($patterns): bool {
-                            foreach ($patterns as $pattern) {
-                                if ($this->matches(
-                                    $permission->name,
-                                    $pattern
-                                )) {
-                                    return true;
+                        ->filter(
+                            function (
+                                Permission $permission
+                            ) use ($patterns): bool {
+                                foreach (
+                                    $patterns as $pattern
+                                ) {
+                                    if (
+                                        $this->matches(
+                                            $permission->name,
+                                            $pattern
+                                        )
+                                    ) {
+                                        return true;
+                                    }
                                 }
-                            }
 
-                            return false;
-                        })
+                                return false;
+                            }
+                        )
                         ->pluck('id');
 
                 $roles[$roleName]
@@ -109,14 +123,18 @@ class SecurityRbacSeeder extends Seeder
             }
 
             $admin = User::query()
-                ->where('email', 'admin@control-escolar.local')
+                ->where(
+                    'email',
+                    'admin@control-escolar.local'
+                )
                 ->first();
 
             if ($admin) {
                 UserRoleAssignment::updateOrCreate(
                     [
                         'user_id' => $admin->id,
-                        'role_id' => $roles['super_admin']->id,
+                        'role_id' =>
+                            $roles['super_admin']->id,
                         'campus_id' => null,
                     ],
                     [
@@ -134,18 +152,77 @@ class SecurityRbacSeeder extends Seeder
         );
     }
 
-    private function createPermissions()
+    private function createPermissions(): SupportCollection
     {
         $definitions = [
-            'dashboard' => ['view'],
-            'students' => ['view', 'create', 'update', 'delete', 'export'],
-            'teachers' => ['view', 'create', 'update', 'delete', 'export'],
-            'groups' => ['view', 'create', 'update', 'delete'],
-            'subjects' => ['view', 'create', 'update', 'delete'],
-            'assessments' => ['view', 'create', 'update', 'delete'],
-            'grades' => ['view', 'create', 'update', 'export'],
-            'attendance' => ['view', 'create', 'update', 'export'],
-            'geodata' => ['view', 'update', 'export'],
+            'dashboard' => [
+                'view',
+            ],
+
+            'students' => [
+                'view',
+                'create',
+                'update',
+                'delete',
+                'export',
+            ],
+
+            'teachers' => [
+                'view',
+                'create',
+                'update',
+                'delete',
+                'export',
+            ],
+
+            'groups' => [
+                'view',
+                'create',
+                'update',
+                'delete',
+            ],
+
+            'subjects' => [
+                'view',
+                'create',
+                'update',
+                'delete',
+            ],
+
+            'teaching_assignments' => [
+                'view',
+                'create',
+                'update',
+                'delete',
+            ],
+
+            'assessments' => [
+                'view',
+                'create',
+                'update',
+                'delete',
+            ],
+
+            'grades' => [
+                'view',
+                'create',
+                'update',
+                'export',
+            ],
+
+            'attendance' => [
+                'view',
+                'create',
+                'update',
+                'export',
+            ],
+
+            'geodata' => [
+                'view',
+                'update',
+                'export',
+            ],
+
             'geofences' => [
                 'view',
                 'create',
@@ -154,73 +231,125 @@ class SecurityRbacSeeder extends Seeder
                 'manage',
                 'monitor',
             ],
-            'files' => ['view', 'create', 'delete'],
-            'users' => ['view', 'create', 'update', 'delete', 'manage'],
-            'roles' => ['view', 'manage'],
-            'audit' => ['view', 'export'],
-	    'campuses' => ['view', 'create', 'update', 'delete'],
+
+            'files' => [
+                'view',
+                'create',
+                'delete',
+            ],
+
+            'users' => [
+                'view',
+                'create',
+                'update',
+                'delete',
+                'manage',
+            ],
+
+            'roles' => [
+                'view',
+                'manage',
+            ],
+
+            'audit' => [
+                'view',
+                'export',
+            ],
+
+            'campuses' => [
+                'view',
+                'create',
+                'update',
+                'delete',
+            ],
         ];
 
         return collect($definitions)
-    ->flatMap(function (
-        array $actions,
-        string $module
-    ): array {
-        return collect($actions)
-            ->map(function (
-                string $action
-            ) use ($module): Permission {
-                $name = "{$module}.{$action}";
+            ->flatMap(
+                function (
+                    array $actions,
+                    string $module
+                ): array {
+                    return collect($actions)
+                        ->map(
+                            function (
+                                string $action
+                            ) use ($module): Permission {
+                                $name =
+                                    "{$module}.{$action}";
 
-                return Permission::updateOrCreate(
-                    ['name' => $name],
-                    [
-                        'module' => $module,
-                        'action' => $action,
-                        'display_name' => ucfirst($module)
-                            .' - '
-                            .ucfirst($action),
-                        'is_active' => true,
-                    ]
-                );
-            })
-            ->all();
-    })
-    ->keyBy('name');
+                                return Permission::updateOrCreate(
+                                    [
+                                        'name' => $name,
+                                    ],
+                                    [
+                                        'module' => $module,
+                                        'action' => $action,
+                                        'display_name' =>
+                                            ucfirst($module)
+                                            .' - '
+                                            .ucfirst($action),
+                                        'is_active' => true,
+                                    ]
+                                );
+                            }
+                        )
+                        ->all();
+                }
+            )
+            ->keyBy('name');
     }
 
-    private function createRoles()
+    private function createRoles(): SupportCollection
     {
         $definitions = [
-            'super_admin' => 'Superadministrador',
-            'school_admin' => 'Administrador escolar',
-            'teacher' => 'Profesor',
-            'student' => 'Alumno',
-            'guardian' => 'Tutor',
-            'geospatial_analyst' => 'Analista geoespacial',
+            'super_admin' =>
+                'Superadministrador',
+
+            'school_admin' =>
+                'Administrador escolar',
+
+            'teacher' =>
+                'Profesor',
+
+            'student' =>
+                'Alumno',
+
+            'guardian' =>
+                'Tutor',
+
+            'geospatial_analyst' =>
+                'Analista geoespacial',
         ];
 
         return collect($definitions)
-            ->mapWithKeys(function (
-                string $displayName,
-                string $name
-            ): array {
-                $role = Role::updateOrCreate(
-                    ['name' => $name],
-                    [
-                        'display_name' => $displayName,
-                        'is_system' => true,
-                        'is_active' => true,
-                    ]
-                );
+            ->mapWithKeys(
+                function (
+                    string $displayName,
+                    string $name
+                ): array {
+                    $role = Role::updateOrCreate(
+                        [
+                            'name' => $name,
+                        ],
+                        [
+                            'display_name' =>
+                                $displayName,
+                            'is_system' => true,
+                            'is_active' => true,
+                        ]
+                    );
 
-                return [$name => $role];
-            });
+                    return [
+                        $name => $role,
+                    ];
+                }
+            );
     }
 
     private function matches(
         string $permission,
-        string $pattern,
+        string $pattern
     ): bool {
         if ($pattern === '*') {
             return true;

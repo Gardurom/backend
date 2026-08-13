@@ -2,15 +2,16 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasUuidV7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use App\Models\Concerns\HasUuidV7;
 
 class Subject extends Model
 {
-    use HasUuidV7, SoftDeletes;
+    use HasUuidV7;
+    use SoftDeletes;
 
     protected $fillable = [
         'campus_id',
@@ -36,6 +37,9 @@ class Subject extends Model
 
     public function teachingAssignments(): HasMany
     {
-        return $this->hasMany(TeachingAssignment::class);
+        return $this->hasMany(
+            TeachingAssignment::class,
+            'subject_id'
+        );
     }
 }
