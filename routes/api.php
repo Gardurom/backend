@@ -1,7 +1,10 @@
 <?php
 
+use App\Http\Controllers\Api\AssessmentController;
+use App\Http\Controllers\Api\AttendanceSessionController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CampusController;
+use App\Http\Controllers\Api\GradeController;
 use App\Http\Controllers\Api\SchoolGroupController;
 use App\Http\Controllers\Api\StudentController;
 use App\Http\Controllers\Api\SubjectController;
@@ -262,4 +265,121 @@ Route::middleware([
         )->middleware(
             'permission:teaching_assignments.delete'
         );
+    });
+
+Route::middleware([
+    'auth:sanctum',
+    'campus',
+])
+    ->prefix('assessments')
+    ->group(function (): void {
+        Route::get(
+            '/',
+            [AssessmentController::class, 'index']
+        )->middleware('permission:assessments.view');
+
+        Route::post(
+            '/',
+            [AssessmentController::class, 'store']
+        )->middleware('permission:assessments.create');
+
+        Route::get(
+            '/{assessment}',
+            [AssessmentController::class, 'show']
+        )->middleware('permission:assessments.view');
+
+        Route::put(
+            '/{assessment}',
+            [AssessmentController::class, 'update']
+        )->middleware('permission:assessments.update');
+
+        Route::patch(
+            '/{assessment}',
+            [AssessmentController::class, 'update']
+        )->middleware('permission:assessments.update');
+
+        Route::delete(
+            '/{assessment}',
+            [AssessmentController::class, 'destroy']
+        )->middleware('permission:assessments.delete');
+    });
+
+Route::middleware([
+    'auth:sanctum',
+    'campus',
+])
+    ->prefix('grades')
+    ->group(function (): void {
+        Route::get(
+            '/',
+            [GradeController::class, 'index']
+        )->middleware('permission:grades.view');
+
+        Route::post(
+            '/',
+            [GradeController::class, 'store']
+        )->middleware('permission:grades.create');
+
+        Route::get(
+            '/{grade}',
+            [GradeController::class, 'show']
+        )->middleware('permission:grades.view');
+
+        Route::put(
+            '/{grade}',
+            [GradeController::class, 'update']
+        )->middleware('permission:grades.update');
+
+        Route::patch(
+            '/{grade}',
+            [GradeController::class, 'update']
+        )->middleware('permission:grades.update');
+    });
+
+Route::middleware([
+    'auth:sanctum',
+    'campus',
+])
+    ->prefix('attendance-sessions')
+    ->group(function (): void {
+        Route::get(
+            '/',
+            [AttendanceSessionController::class, 'index']
+        )->middleware('permission:attendance.view');
+
+        Route::post(
+            '/',
+            [AttendanceSessionController::class, 'store']
+        )->middleware('permission:attendance.create');
+
+        Route::put(
+            '/{attendanceSession}/records',
+            [
+                AttendanceSessionController::class,
+                'updateRecords',
+            ]
+        )->middleware('permission:attendance.update');
+
+        Route::patch(
+            '/{attendanceSession}/records',
+            [
+                AttendanceSessionController::class,
+                'updateRecords',
+            ]
+        )->middleware('permission:attendance.update');
+
+        Route::get(
+            '/{attendanceSession}',
+            [AttendanceSessionController::class, 'show']
+        )->middleware('permission:attendance.view');
+
+        Route::put(
+            '/{attendanceSession}',
+            [AttendanceSessionController::class, 'update']
+        )->middleware('permission:attendance.update');
+
+        Route::patch(
+            '/{attendanceSession}',
+            [AttendanceSessionController::class, 'update']
+        )->middleware('permission:attendance.update');
     });

@@ -29,11 +29,17 @@ class AttendanceRecord extends Model
 
     public function attendanceSession(): BelongsTo
     {
-        return $this->belongsTo(AttendanceSession::class);
+        return $this->belongsTo(
+            AttendanceSession::class,
+            'attendance_session_id'
+        );
     }
 
     public function enrollment(): BelongsTo
     {
-        return $this->belongsTo(Enrollment::class);
+        return $this->belongsTo(
+            Enrollment::class,
+            'enrollment_id'
+        );
     }
 }

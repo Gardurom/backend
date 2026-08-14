@@ -40,7 +40,10 @@ class AttendanceSession extends Model
 
     public function teachingAssignment(): BelongsTo
     {
-        return $this->belongsTo(TeachingAssignment::class);
+        return $this->belongsTo(
+            TeachingAssignment::class,
+            'teaching_assignment_id'
+        );
     }
 
     public function recordedByTeacher(): BelongsTo
@@ -53,6 +56,9 @@ class AttendanceSession extends Model
 
     public function records(): HasMany
     {
-        return $this->hasMany(AttendanceRecord::class);
+        return $this->hasMany(
+            AttendanceRecord::class,
+            'attendance_session_id'
+        );
     }
 }
