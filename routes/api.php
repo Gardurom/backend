@@ -4,9 +4,11 @@ use App\Http\Controllers\Api\AssessmentController;
 use App\Http\Controllers\Api\AttendanceSessionController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CampusController;
+use App\Http\Controllers\Api\GeofenceController;
 use App\Http\Controllers\Api\GradeController;
 use App\Http\Controllers\Api\SchoolGroupController;
 use App\Http\Controllers\Api\StudentController;
+use App\Http\Controllers\Api\StudentPositionController;
 use App\Http\Controllers\Api\SubjectController;
 use App\Http\Controllers\Api\TeacherController;
 use App\Http\Controllers\Api\TeachingAssignmentController;
@@ -84,6 +86,14 @@ Route::middleware('auth:sanctum')
         )->middleware([
             'campus',
             'permission:students.create',
+        ]);
+
+        Route::post(
+            '/{student}/positions',
+            [StudentPositionController::class, 'store']
+        )->middleware([
+            'campus',
+            'permission:geodata.update',
         ]);
 
         Route::get(
@@ -382,4 +392,41 @@ Route::middleware([
             '/{attendanceSession}',
             [AttendanceSessionController::class, 'update']
         )->middleware('permission:attendance.update');
+    });
+
+Route::middleware([
+    'auth:sanctum',
+    'campus',
+])
+    ->prefix('geofences')
+    ->group(function (): void {
+        Route::get(
+            '/',
+            [GeofenceController::class, 'index']
+        )->middleware('permission:geofences.view');
+
+        Route::post(
+            '/',
+            [GeofenceController::class, 'store']
+        )->middleware('permission:geofences.create');
+
+        Route::get(
+            '/{geofence}',
+            [GeofenceController::class, 'show']
+        )->middleware('permission:geofences.view');
+
+        Route::put(
+            '/{geofence}',
+            [GeofenceController::class, 'update']
+        )->middleware('permission:geofences.update');
+
+        Route::patch(
+            '/{geofence}',
+            [GeofenceController::class, 'update']
+        )->middleware('permission:geofences.update');
+
+        Route::delete(
+            '/{geofence}',
+            [GeofenceController::class, 'destroy']
+        )->middleware('permission:geofences.delete');
     });
