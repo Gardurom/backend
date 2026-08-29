@@ -7,7 +7,6 @@ use App\Http\Controllers\Api\CampusController;
 use App\Http\Controllers\Api\GeofenceController;
 use App\Http\Controllers\Api\GeofenceEventController;
 use App\Http\Controllers\Api\GeofenceStudentAssignmentController;
-use App\Http\Controllers\Api\GeofenceStudentStateController;
 use App\Http\Controllers\Api\GradeController;
 use App\Http\Controllers\Api\SchoolGroupController;
 use App\Http\Controllers\Api\StudentController;
@@ -435,16 +434,6 @@ Route::middleware([
             '/{geofence}/students/{student}',
             [GeofenceStudentAssignmentController::class, 'update']
         )->middleware('permission:geofences.manage');
-
-        Route::delete(
-            '/{geofence}/students/{student}',
-            [GeofenceStudentAssignmentController::class, 'destroy']
-        )->middleware('permission:geofences.manage');
-
-        Route::get(
-            '/{geofence}/states',
-            [GeofenceStudentStateController::class, 'index']
-        )->middleware('permission:geofences.monitor');
 
         Route::get(
             '/{geofence}',
