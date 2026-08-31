@@ -426,21 +426,6 @@ Route::middleware([
             '/{locality}',
             [LocalityController::class, 'show']
         )->middleware('permission:geodata.view');
-
-        Route::put(
-            '/{locality}',
-            [LocalityController::class, 'update']
-        )->middleware('permission:geodata.update');
-
-        Route::patch(
-            '/{locality}',
-            [LocalityController::class, 'update']
-        )->middleware('permission:geodata.update');
-
-        Route::delete(
-            '/{locality}',
-            [LocalityController::class, 'destroy']
-        )->middleware('permission:geodata.update');
     });
 
 Route::middleware([
