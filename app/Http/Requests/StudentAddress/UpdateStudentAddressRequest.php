@@ -3,12 +3,44 @@
 namespace App\Http\Requests\StudentAddress;
 
 use App\Models\StudentAddress;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
+use Throwable;
 
 class UpdateStudentAddressRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if (! $this->has('verified_at')) {
+            return;
+        }
+
+        $verifiedAt = $this->input('verified_at');
+
+        if (
+            ! is_string($verifiedAt)
+            || trim($verifiedAt) === ''
+        ) {
+            return;
+        }
+
+        try {
+            $normalizedVerifiedAt = CarbonImmutable::parse(
+                $verifiedAt
+            )
+                ->utc()
+                ->format('Y-m-d\TH:i:s.u\Z');
+        } catch (Throwable) {
+            return;
+        }
+
+        $this->merge([
+            'verified_at' => $normalizedVerifiedAt,
+        ]);
+    }
+
     public function authorize(): bool
     {
         return true;

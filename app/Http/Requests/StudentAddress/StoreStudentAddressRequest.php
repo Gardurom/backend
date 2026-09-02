@@ -2,11 +2,39 @@
 
 namespace App\Http\Requests\StudentAddress;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Throwable;
 
 class StoreStudentAddressRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $verifiedAt = $this->input('verified_at');
+
+        if (
+            ! is_string($verifiedAt)
+            || trim($verifiedAt) === ''
+        ) {
+            return;
+        }
+
+        try {
+            $normalizedVerifiedAt = CarbonImmutable::parse(
+                $verifiedAt
+            )
+                ->utc()
+                ->format('Y-m-d\TH:i:s.u\Z');
+        } catch (Throwable) {
+            return;
+        }
+
+        $this->merge([
+            'verified_at' => $normalizedVerifiedAt,
+        ]);
+    }
+
     public function authorize(): bool
     {
         return true;

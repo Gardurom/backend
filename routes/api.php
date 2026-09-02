@@ -8,9 +8,11 @@ use App\Http\Controllers\Api\GeofenceController;
 use App\Http\Controllers\Api\GeofenceEventController;
 use App\Http\Controllers\Api\GeofenceStudentAssignmentController;
 use App\Http\Controllers\Api\GeofenceStudentStateController;
+use App\Http\Controllers\Api\GeospatialAnalysisController;
 use App\Http\Controllers\Api\GradeController;
 use App\Http\Controllers\Api\LocalityController;
 use App\Http\Controllers\Api\SchoolGroupController;
+use App\Http\Controllers\Api\StudentAddressController;
 use App\Http\Controllers\Api\StudentController;
 use App\Http\Controllers\Api\StudentPositionController;
 use App\Http\Controllers\Api\SubjectController;
@@ -106,6 +108,54 @@ Route::middleware('auth:sanctum')
         )->middleware([
             'campus',
             'permission:geodata.update',
+        ]);
+
+        Route::get(
+            '/{student}/addresses',
+            [StudentAddressController::class, 'index']
+        )->middleware([
+            'campus',
+            'permission:students.view',
+        ]);
+
+        Route::post(
+            '/{student}/addresses',
+            [StudentAddressController::class, 'store']
+        )->middleware([
+            'campus',
+            'permission:students.update',
+        ]);
+
+        Route::get(
+            '/{student}/addresses/{address}',
+            [StudentAddressController::class, 'show']
+        )->middleware([
+            'campus',
+            'permission:students.view',
+        ]);
+
+        Route::put(
+            '/{student}/addresses/{address}',
+            [StudentAddressController::class, 'update']
+        )->middleware([
+            'campus',
+            'permission:students.update',
+        ]);
+
+        Route::patch(
+            '/{student}/addresses/{address}',
+            [StudentAddressController::class, 'update']
+        )->middleware([
+            'campus',
+            'permission:students.update',
+        ]);
+
+        Route::delete(
+            '/{student}/addresses/{address}',
+            [StudentAddressController::class, 'destroy']
+        )->middleware([
+            'campus',
+            'permission:students.update',
         ]);
 
         Route::get(
@@ -441,6 +491,29 @@ Route::middleware([
             '/{locality}',
             [LocalityController::class, 'destroy']
         )->middleware('permission:geodata.update');
+    });
+
+Route::middleware([
+    'auth:sanctum',
+    'campus',
+])
+    ->prefix('geodata')
+    ->group(function (): void {
+        Route::get(
+            '/choropleth/localities',
+            [
+                GeospatialAnalysisController::class,
+                'localityChoropleth',
+            ]
+        )->middleware('permission:geodata.view');
+
+        Route::get(
+            '/heatmap/students',
+            [
+                GeospatialAnalysisController::class,
+                'studentHeatmap',
+            ]
+        )->middleware('permission:geodata.view');
     });
 
 Route::middleware([
