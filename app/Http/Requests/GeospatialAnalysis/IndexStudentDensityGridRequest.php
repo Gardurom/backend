@@ -4,7 +4,7 @@ namespace App\Http\Requests\GeospatialAnalysis;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class IndexStudentHeatmapRequest extends FormRequest
+class IndexStudentDensityGridRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -14,6 +14,13 @@ class IndexStudentHeatmapRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'cell_size_meters' => [
+                'nullable',
+                'integer',
+                'min:50',
+                'max:10000',
+            ],
+
             'max_age_minutes' => [
                 'nullable',
                 'integer',
@@ -26,6 +33,15 @@ class IndexStudentHeatmapRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'cell_size_meters.integer' =>
+                'El tamaño de celda debe expresarse en metros enteros.',
+
+            'cell_size_meters.min' =>
+                'El tamaño de celda debe ser de al menos 50 metros.',
+
+            'cell_size_meters.max' =>
+                'El tamaño de celda no puede exceder 10000 metros.',
+
             'max_age_minutes.integer' =>
                 'La antigüedad máxima debe expresarse en minutos enteros.',
 

@@ -514,6 +514,22 @@ Route::middleware([
                 'studentHeatmap',
             ]
         )->middleware('permission:geodata.view');
+
+        Route::get(
+            '/density-grid/students',
+            [
+                GeospatialAnalysisController::class,
+                'studentDensityGrid',
+            ]
+        )->middleware('permission:geodata.view');
+
+        Route::get(
+            '/influence-zones/students',
+            [
+                GeospatialAnalysisController::class,
+                'studentInfluenceZones',
+            ]
+        )->middleware('permission:geodata.view');
     });
 
 Route::middleware([

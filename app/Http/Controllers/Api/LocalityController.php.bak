@@ -193,11 +193,7 @@ class LocalityController extends Controller
             ], 409);
         }
 
-        if (
-            $locality->studentAddresses()
-                ->withTrashed()
-                ->exists()
-        ) {
+        if ($locality->studentAddresses()->exists()) {
             return response()->json([
                 'message' => 'No se puede eliminar la localidad porque tiene domicilios de alumnos asociados.',
             ], 409);
