@@ -32,12 +32,8 @@ class StoreSubjectRequest extends FormRequest
 
     public function rules(): array
     {
-        $campusId = (string) $this->input(
-            'campus_id'
-        );
-
-        $headerCampusId = (string) $this->header(
-            'X-Campus-ID'
+        $headerCampusId = trim(
+            (string) $this->header('X-Campus-ID')
         );
 
         return [
@@ -63,7 +59,7 @@ class StoreSubjectRequest extends FormRequest
                     ->where(
                         fn ($query) => $query->where(
                             'campus_id',
-                            $campusId
+                            $headerCampusId
                         )
                     ),
             ],
@@ -98,6 +94,12 @@ class StoreSubjectRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'campus_id.required' =>
+                'El plantel es obligatorio.',
+
+            'campus_id.uuid' =>
+                'El identificador del plantel no es válido.',
+
             'campus_id.in' =>
                 'El plantel del cuerpo debe coincidir con X-Campus-ID.',
 

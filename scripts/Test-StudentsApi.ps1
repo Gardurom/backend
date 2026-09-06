@@ -2,252 +2,645 @@
 
 $backendUrl = "http://127.0.0.1:8000"
 
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+$stateFile = Join-Path `
+    $scriptRoot `
+    ".test-state\students.json"
+
+Write-Host ""
+Write-Host "========================================"
+Write-Host " CONTROL ESCOLAR - PRUEBA API"
+Write-Host " MODULO: ALUMNOS"
+Write-Host "========================================"
+Write-Host ""
+
 if (-not $global:webSession) {
-    throw "No existe una sesion HTTP. Ejecuta primero: . .\scripts\Test-Auth.ps1"
+    throw @"
+No existe una sesion HTTP autenticada.
+
+Ejecuta primero:
+
+. .\scripts\Test-Auth.ps1
+"@
 }
 
 if (-not $global:authHeaders) {
-    throw "No existen los encabezados de autenticacion. Ejecuta primero Test-Auth.ps1."
+    throw @"
+No existen los encabezados autenticados.
+
+Ejecuta primero:
+
+. .\scripts\Test-Auth.ps1
+"@
 }
 
-Write-Host "1. Comprobando sesion autenticada..."
+if (-not (Test-Path -LiteralPath $stateFile)) {
+    throw @"
+No existe el archivo de estado de Students:
+
+$stateFile
+
+Ejecuta primero:
+
+.\scripts\Create-StudentsTestData.ps1
+"@
+}
+
+Write-Host "1. Cargando datos de prueba..."
+
+$stateJson = [System.IO.File]::ReadAllText(
+    $stateFile
+)
+
+try {
+    $state = $stateJson |
+        ConvertFrom-Json
+}
+catch {
+    throw @"
+No fue posible interpretar el archivo:
+
+$stateFile
+
+El JSON del estado no es valido.
+"@
+}
+
+if ($state.module -ne "students") {
+    throw @"
+El archivo de estado no pertenece al modulo Students.
+
+Modulo encontrado:
+$($state.module)
+"@
+}
+
+if (
+    -not $state.test `
+    -or $state.test.created_by_api_test -ne $true
+) {
+    throw @"
+El archivo de estado no contiene el marcador de seguridad esperado:
+
+test.created_by_api_test = true
+
+Prueba cancelada.
+"@
+}
+
+$campusId = [string]$state.campus.id
+$studentId = [string]$state.student.id
+$enrollmentNumber = [string] `
+    $state.student.enrollment_number
+$studentEmail = [string]$state.student.email
+
+if ([string]::IsNullOrWhiteSpace($campusId)) {
+    throw "El archivo de estado no contiene campus.id."
+}
+
+if ([string]::IsNullOrWhiteSpace($studentId)) {
+    throw "El archivo de estado no contiene student.id."
+}
+
+if (
+    [string]::IsNullOrWhiteSpace(
+        $enrollmentNumber
+    )
+) {
+    throw @"
+El archivo de estado no contiene:
+student.enrollment_number
+"@
+}
+
+if (
+    [string]::IsNullOrWhiteSpace(
+        $studentEmail
+    )
+) {
+    throw "El archivo de estado no contiene student.email."
+}
+
+$headers = $global:authHeaders.Clone()
+
+$headers["Accept"] = "application/json"
+$headers["X-Campus-ID"] = $campusId
+
+Write-Host "   OK"
+Write-Host "   Campus ID:  $campusId"
+Write-Host "   Student ID: $studentId"
+Write-Host "   Matricula:  $enrollmentNumber"
+Write-Host ""
+
+Write-Host "2. Verificando sesion autenticada..."
 
 $currentUser = Invoke-RestMethod `
     -Uri "$backendUrl/api/auth/me" `
     -Method Get `
     -WebSession $global:webSession `
-    -Headers $global:authHeaders
+    -Headers $headers
 
-Write-Host "   Usuario autenticado: $($currentUser.user.email)"
+if (-not $currentUser.user) {
+    throw @"
+La API no devolvio el usuario autenticado.
+"@
+}
 
-Write-Host "2. Obteniendo planteles..."
+if (
+    [string]::IsNullOrWhiteSpace(
+        [string]$currentUser.user.email
+    )
+) {
+    throw @"
+La API no devolvio el correo del usuario autenticado.
+"@
+}
 
-$campusResponse = Invoke-RestMethod `
-    -Uri "$backendUrl/api/campuses?is_active=1&per_page=20" `
+Write-Host "   OK"
+Write-Host "   Usuario: $($currentUser.user.email)"
+Write-Host ""
+
+Write-Host "3. Consultando alumno preparado..."
+
+$showResponse = Invoke-RestMethod `
+    -Uri "$backendUrl/api/students/$studentId" `
     -Method Get `
     -WebSession $global:webSession `
-    -Headers $global:authHeaders
+    -Headers $headers
 
-$campus = $campusResponse.data |
-    Select-Object -First 1
-
-if (-not $campus) {
-    throw "No existe ningun plantel activo."
+if (-not $showResponse.data) {
+    throw "La API no devolvio data para el alumno."
 }
 
-$campusId = $campus.id
+if (
+    [string]$showResponse.data.id `
+        -ne $studentId
+) {
+    throw @"
+La API devolvio un alumno diferente.
 
-Write-Host "   Plantel seleccionado: $($campus.name)"
-Write-Host "   Campus ID: $campusId"
+Esperado:
+$studentId
 
-$studentHeaders = $global:authHeaders.Clone()
-$studentHeaders["X-Campus-ID"] = $campusId
+Recibido:
+$($showResponse.data.id)
+"@
+}
 
-$uniqueSuffix = Get-Date -Format "yyyyMMddHHmmss"
+Write-Host "   OK"
+Write-Host "   Alumno encontrado."
 
-$createBody = @{
-    campus_id = $campusId
-    enrollment_number = "TEST-$uniqueSuffix"
-    enrolled_on = (Get-Date).ToString("yyyy-MM-dd")
-    status = "active"
-    notes = "Registro temporal creado por la prueba API."
-    person = @{
-        first_name = "Alumno"
-        middle_name = "Temporal"
-        paternal_surname = "Prueba"
-        maternal_surname = "API"
-        curp = $null
-        birth_date = "2012-06-15"
-        sex = "unspecified"
-        email = "alumno.$uniqueSuffix@example.test"
-        phone = "5550000000"
-        emergency_phone = "5550000001"
-        additional_data = @{
-            is_api_test = $true
-        }
-    }
-} | ConvertTo-Json -Depth 10
+if ($showResponse.data.person.full_name) {
+    Write-Host `
+        "   Nombre: $($showResponse.data.person.full_name)"
+}
 
-$studentId = $null
-$testCompleted = $false
+Write-Host ""
 
-try {
-    Write-Host "3. Creando alumno..."
+Write-Host "4. Verificando plantel del alumno..."
 
-    $createdResponse = Invoke-RestMethod `
-        -Uri "$backendUrl/api/students" `
-        -Method Post `
-        -WebSession $global:webSession `
-        -Headers $studentHeaders `
-        -ContentType "application/json" `
-        -Body $createBody
+if (
+    [string]$showResponse.data.campus_id `
+        -ne $campusId
+) {
+    throw @"
+El alumno pertenece a un plantel diferente.
 
-    $student = $createdResponse.data
-    $studentId = $student.id
+Esperado:
+$campusId
 
-    if (-not $studentId) {
-        throw "La API no devolvio el UUID del alumno."
-    }
+Recibido:
+$($showResponse.data.campus_id)
+"@
+}
 
-    Write-Host "   Alumno creado: $studentId"
-    Write-Host "   Matricula: $($student.enrollment_number)"
+Write-Host "   OK"
+Write-Host ""
 
-    Write-Host "4. Verificando que la sesion siga activa..."
+Write-Host "5. Verificando matricula..."
 
-    $currentUser = Invoke-RestMethod `
-        -Uri "$backendUrl/api/auth/me" `
-        -Method Get `
-        -WebSession $global:webSession `
-        -Headers $global:authHeaders
+if (
+    [string]$showResponse.data.enrollment_number `
+        -ne $enrollmentNumber
+) {
+    throw @"
+La matricula no coincide con el estado.
 
-    Write-Host "   Sesion activa: $($currentUser.user.email)"
+Esperado:
+$enrollmentNumber
 
-    Write-Host "5. Consultando alumno..."
+Recibido:
+$($showResponse.data.enrollment_number)
+"@
+}
 
-    $showResponse = Invoke-RestMethod `
-        -Uri "$backendUrl/api/students/$studentId" `
-        -Method Get `
-        -WebSession $global:webSession `
-        -Headers $studentHeaders
+Write-Host "   OK"
+Write-Host "   Matricula: $enrollmentNumber"
+Write-Host ""
 
-    if ($showResponse.data.id -ne $studentId) {
-        throw "La consulta devolvio un alumno diferente."
-    }
+Write-Host "6. Verificando correo de la persona..."
 
-    Write-Host "   Alumno consultado correctamente."
-    Write-Host "   Nombre: $($showResponse.data.person.full_name)"
+if (-not $showResponse.data.person) {
+    throw "La respuesta no contiene person."
+}
 
-    $updateBody = @{
-        status = "inactive"
-        notes = "Registro temporal actualizado correctamente."
-        person = @{
-            first_name = "Alumno Actualizado"
-            phone = "5550000099"
-        }
-    } | ConvertTo-Json -Depth 10
+if (
+    [string]$showResponse.data.person.email `
+        -ne $studentEmail
+) {
+    throw @"
+El correo no coincide con el estado.
 
-    Write-Host "6. Actualizando alumno..."
+Esperado:
+$studentEmail
 
-    $updatedResponse = Invoke-RestMethod `
-        -Uri "$backendUrl/api/students/$studentId" `
-        -Method Patch `
-        -WebSession $global:webSession `
-        -Headers $studentHeaders `
-        -ContentType "application/json" `
-        -Body $updateBody
+Recibido:
+$($showResponse.data.person.email)
+"@
+}
 
-    if ($updatedResponse.data.status -ne "inactive") {
-        throw "El estado del alumno no fue actualizado."
-    }
+Write-Host "   OK"
+Write-Host "   Correo: $studentEmail"
+Write-Host ""
 
-    if (
-        $updatedResponse.data.person.first_name `
-            -ne "Alumno Actualizado"
-    ) {
-        throw "El nombre del alumno no fue actualizado."
-    }
+Write-Host "7. Actualizando alumno..."
 
-    Write-Host "   Alumno actualizado correctamente."
+$updateBody = @{
+    status = "inactive"
 
-    Write-Host "7. Buscando alumno en el listado..."
-
-    $searchValue = [Uri]::EscapeDataString(
-        "TEST-$uniqueSuffix"
+    notes = (
+        "Registro temporal actualizado por " +
+        "Test-StudentsApi.ps1."
     )
 
-    $listResponse = Invoke-RestMethod `
-        -Uri "$backendUrl/api/students?search=$searchValue&per_page=10" `
-        -Method Get `
-        -WebSession $global:webSession `
-        -Headers $studentHeaders
+    person = @{
+        first_name = "Alumno Actualizado"
+        phone = "5550000099"
+    }
+} |
+    ConvertTo-Json -Depth 10
 
-    $listedStudent = $listResponse.data |
-        Where-Object {
-            $_.id -eq $studentId
-        } |
-        Select-Object -First 1
+$updateResponse = Invoke-RestMethod `
+    -Uri "$backendUrl/api/students/$studentId" `
+    -Method Patch `
+    -WebSession $global:webSession `
+    -Headers $headers `
+    -ContentType "application/json" `
+    -Body $updateBody
 
-    if (-not $listedStudent) {
-        throw "El alumno no aparecio en el listado filtrado."
+if (-not $updateResponse.data) {
+    throw "El PATCH no devolvio data."
+}
+
+if (
+    [string]$updateResponse.data.id `
+        -ne $studentId
+) {
+    throw @"
+El PATCH devolvio un alumno diferente.
+
+Esperado:
+$studentId
+
+Recibido:
+$($updateResponse.data.id)
+"@
+}
+
+if (
+    [string]$updateResponse.data.status `
+        -ne "inactive"
+) {
+    throw @"
+El estado no fue actualizado.
+
+Esperado:
+inactive
+
+Recibido:
+$($updateResponse.data.status)
+"@
+}
+
+if (
+    [string]$updateResponse.data.person.first_name `
+        -ne "Alumno Actualizado"
+) {
+    throw @"
+El nombre no fue actualizado.
+
+Esperado:
+Alumno Actualizado
+
+Recibido:
+$($updateResponse.data.person.first_name)
+"@
+}
+
+Write-Host "   OK"
+Write-Host "   PATCH procesado correctamente."
+Write-Host ""
+
+Write-Host "8. Verificando persistencia del PATCH..."
+
+$persistedResponse = Invoke-RestMethod `
+    -Uri "$backendUrl/api/students/$studentId" `
+    -Method Get `
+    -WebSession $global:webSession `
+    -Headers $headers
+
+if (-not $persistedResponse.data) {
+    throw @"
+La consulta posterior al PATCH no devolvio data.
+"@
+}
+
+if (
+    [string]$persistedResponse.data.id `
+        -ne $studentId
+) {
+    throw @"
+La consulta posterior devolvio otro alumno.
+"@
+}
+
+if (
+    [string]$persistedResponse.data.status `
+        -ne "inactive"
+) {
+    throw @"
+El estado actualizado no fue persistido.
+
+Esperado:
+inactive
+
+Recibido:
+$($persistedResponse.data.status)
+"@
+}
+
+if (
+    [string]$persistedResponse.data.person.first_name `
+        -ne "Alumno Actualizado"
+) {
+    throw @"
+El nombre actualizado no fue persistido.
+
+Esperado:
+Alumno Actualizado
+
+Recibido:
+$($persistedResponse.data.person.first_name)
+"@
+}
+
+if (
+    [string]$persistedResponse.data.person.phone `
+        -ne "5550000099"
+) {
+    throw @"
+El telefono actualizado no fue persistido.
+
+Esperado:
+5550000099
+
+Recibido:
+$($persistedResponse.data.person.phone)
+"@
+}
+
+Write-Host "   OK"
+Write-Host `
+    "   Estado:   $($persistedResponse.data.status)"
+Write-Host `
+    "   Nombre:   $($persistedResponse.data.person.first_name)"
+Write-Host `
+    "   Telefono: $($persistedResponse.data.person.phone)"
+Write-Host ""
+
+Write-Host "9. Buscando alumno mediante matricula..."
+
+$encodedEnrollment = [System.Uri]::EscapeDataString(
+    $enrollmentNumber
+)
+
+$searchResponse = Invoke-RestMethod `
+    -Uri (
+        "$backendUrl/api/students" +
+        "?search=$encodedEnrollment" +
+        "&per_page=20"
+    ) `
+    -Method Get `
+    -WebSession $global:webSession `
+    -Headers $headers
+
+$searchMatch = $searchResponse.data |
+    Where-Object {
+        [string]$_.id -eq $studentId
+    } |
+    Select-Object -First 1
+
+if (-not $searchMatch) {
+    throw @"
+El alumno no aparecio al buscarlo por matricula.
+
+Matricula:
+$enrollmentNumber
+"@
+}
+
+Write-Host "   OK"
+Write-Host ""
+
+Write-Host "10. Verificando filtro por estado inactive..."
+
+$inactiveResponse = Invoke-RestMethod `
+    -Uri (
+        "$backendUrl/api/students" +
+        "?status=inactive" +
+        "&per_page=100"
+    ) `
+    -Method Get `
+    -WebSession $global:webSession `
+    -Headers $headers
+
+$inactiveMatch = $inactiveResponse.data |
+    Where-Object {
+        [string]$_.id -eq $studentId
+    } |
+    Select-Object -First 1
+
+if (-not $inactiveMatch) {
+    throw @"
+El alumno no aparecio en el filtro:
+status=inactive
+"@
+}
+
+Write-Host "   OK"
+Write-Host ""
+
+Write-Host "11. Verificando que no aparezca como active..."
+
+$activeResponse = Invoke-RestMethod `
+    -Uri (
+        "$backendUrl/api/students" +
+        "?status=active" +
+        "&per_page=100"
+    ) `
+    -Method Get `
+    -WebSession $global:webSession `
+    -Headers $headers
+
+$activeMatch = $activeResponse.data |
+    Where-Object {
+        [string]$_.id -eq $studentId
+    } |
+    Select-Object -First 1
+
+if ($activeMatch) {
+    throw @"
+El alumno aparecio incorrectamente en:
+status=active
+"@
+}
+
+Write-Host "   OK"
+Write-Host ""
+
+Write-Host "12. Verificando acceso sin X-Campus-ID..."
+
+$isolatedSession = New-Object `
+    Microsoft.PowerShell.Commands.WebRequestSession
+
+$backendUri = [System.Uri]$backendUrl
+
+$global:webSession.Cookies.GetCookies(
+    $backendUri
+) |
+    ForEach-Object {
+        $cookieCopy = New-Object `
+            System.Net.Cookie(
+                $_.Name,
+                $_.Value,
+                $_.Path,
+                $_.Domain
+            )
+
+        $isolatedSession.Cookies.Add(
+            $cookieCopy
+        )
     }
 
-    Write-Host "   Alumno encontrado mediante busqueda."
+$isolatedHeaders = @{
+    "Accept" = "application/json"
+    "Origin" = "http://127.0.0.1:4200"
+    "Referer" = "http://127.0.0.1:4200/"
+}
 
-    Write-Host "8. Eliminando alumno temporal..."
+Remove-Variable missingCampusResponse `
+    -ErrorAction SilentlyContinue
 
-    Invoke-RestMethod `
+$missingCampusConfirmed = $false
+
+try {
+    $missingCampusResponse = Invoke-WebRequest `
         -Uri "$backendUrl/api/students/$studentId" `
-        -Method Delete `
-        -WebSession $global:webSession `
-        -Headers $studentHeaders |
-        Out-Null
+        -Method Get `
+        -WebSession $isolatedSession `
+        -Headers $isolatedHeaders `
+        -UseBasicParsing
 
-    Write-Host "   Alumno eliminado."
+    throw @"
+La API permitio consultar el alumno sin X-Campus-ID.
 
-    Write-Host "9. Confirmando eliminacion..."
+HTTP recibido:
+$($missingCampusResponse.StatusCode)
 
-    $notFoundConfirmed = $false
-
-    try {
-        Invoke-RestMethod `
-            -Uri "$backendUrl/api/students/$studentId" `
-            -Method Get `
-            -WebSession $global:webSession `
-            -Headers $studentHeaders |
-            Out-Null
-    }
-    catch {
-        if (
-            $_.Exception.Response `
-            -and [int]$_.Exception.Response.StatusCode -eq 404
-        ) {
-            $notFoundConfirmed = $true
-        }
-        else {
-            throw
-        }
-    }
-
-    if (-not $notFoundConfirmed) {
-        throw "El alumno eliminado todavia puede consultarse."
-    }
-
-    $studentId = $null
-    $testCompleted = $true
+Se esperaba HTTP 422.
+"@
 }
-finally {
-    
-    if ($studentId) {
-        Write-Host ""
-        Write-Host "Intentando limpiar el alumno temporal..." `
-            -ForegroundColor Yellow
-
-        try {
-            Invoke-RestMethod `
-                -Uri "$backendUrl/api/students/$studentId" `
-                -Method Delete `
-                -WebSession $global:webSession `
-                -Headers $studentHeaders |
-                Out-Null
-
-            Write-Host "Alumno temporal eliminado." `
-                -ForegroundColor Yellow
-        }
-        catch {
-            Write-Host "No fue posible eliminar automaticamente el alumno $studentId." `
-                -ForegroundColor Red
-        }
+catch {
+    if (
+        $_.Exception.Response `
+        -and [int]$_.Exception.Response.StatusCode `
+            -eq 422
+    ) {
+        $missingCampusConfirmed = $true
+    }
+    elseif (
+        $_.Exception.Message -like `
+            "La API permitio consultar*"
+    ) {
+        throw
+    }
+    else {
+        throw
     }
 }
 
-if ($testCompleted) {
-    Write-Host ""
-    Write-Host "PRUEBA COMPLETADA CORRECTAMENTE" `
-        -ForegroundColor Green
-    Write-Host "Crear:      OK"
-    Write-Host "Sesion:     OK"
-    Write-Host "Consultar:  OK"
-    Write-Host "Actualizar: OK"
-    Write-Host "Buscar:     OK"
-    Write-Host "Eliminar:   OK"
+if (-not $missingCampusConfirmed) {
+    throw @"
+No fue posible confirmar HTTP 422 sin X-Campus-ID.
+"@
 }
+
+Write-Host "   OK"
+Write-Host "   HTTP 422 confirmado."
+Write-Host ""
+
+Write-Host "13. Confirmando que el registro sigue preservado..."
+
+$finalResponse = Invoke-RestMethod `
+    -Uri "$backendUrl/api/students/$studentId" `
+    -Method Get `
+    -WebSession $global:webSession `
+    -Headers $headers
+
+if (
+    -not $finalResponse.data `
+    -or [string]$finalResponse.data.id `
+        -ne $studentId
+) {
+    throw @"
+El alumno temporal ya no esta disponible.
+
+El script Test-StudentsApi.ps1 no debe eliminarlo.
+"@
+}
+
+Write-Host "   OK"
+Write-Host "   Alumno temporal preservado."
+Write-Host ""
+
+Write-Host "========================================"
+Write-Host " RESULTADO: MODULO STUDENTS OK"
+Write-Host "========================================"
+Write-Host ""
+Write-Host "Modulo:                  STUDENTS"
+Write-Host "Sesion autenticada:      OK"
+Write-Host "Carga de estado:         OK"
+Write-Host "Consulta:                OK"
+Write-Host "Plantel:                 OK"
+Write-Host "Matricula:               OK"
+Write-Host "Correo:                   OK"
+Write-Host "Actualizacion PATCH:     OK"
+Write-Host "Persistencia update:     OK"
+Write-Host "Telefono persistido:     OK"
+Write-Host "Busqueda:                OK"
+Write-Host "Filtro inactive:         OK"
+Write-Host "Filtro active:           OK"
+Write-Host "Campus requerido:        OK"
+Write-Host "Registro preservado:     OK"
+Write-Host ""
+Write-Host "Student ID:"
+Write-Host $studentId
+Write-Host ""
+Write-Host "El alumno NO fue eliminado."
+Write-Host ""
+Write-Host (
+    "La eliminacion se realizara posteriormente " +
+    "con Cleanup-StudentsTestData.ps1."
+)
+Write-Host ""

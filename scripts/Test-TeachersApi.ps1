@@ -2,318 +2,697 @@ $ErrorActionPreference = "Stop"
 
 $backendUrl = "http://127.0.0.1:8000"
 
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+$stateFile = Join-Path `
+    $scriptRoot `
+    ".test-state\teachers.json"
+
+Write-Host ""
+Write-Host "========================================"
+Write-Host " CONTROL ESCOLAR - PRUEBA API"
+Write-Host " MODULO: PROFESORES"
+Write-Host "========================================"
+Write-Host ""
+
 if (-not $global:webSession) {
-    throw "No existe una sesion HTTP. Ejecuta primero: . .\scripts\Test-Auth.ps1"
+    throw @"
+No existe una sesion HTTP autenticada.
+
+Ejecuta primero:
+
+. .\scripts\Test-Auth.ps1
+"@
 }
 
 if (-not $global:authHeaders) {
-    throw "No existen encabezados de autenticacion. Ejecuta primero Test-Auth.ps1."
+    throw @"
+No existen los encabezados autenticados.
+
+Ejecuta primero:
+
+. .\scripts\Test-Auth.ps1
+"@
 }
 
-function Get-ErrorResponseBody {
-    param(
-        [Parameter(Mandatory = $true)]
-        $ErrorRecord
+if (-not (Test-Path -LiteralPath $stateFile)) {
+    throw @"
+No existe el archivo de estado de Teachers:
+
+$stateFile
+
+Ejecuta primero:
+
+.\scripts\Create-TeachersTestData.ps1
+"@
+}
+
+Write-Host "1. Cargando datos de prueba..."
+
+$stateJson = [System.IO.File]::ReadAllText(
+    $stateFile
+)
+
+try {
+    $state = $stateJson |
+        ConvertFrom-Json
+}
+catch {
+    throw @"
+No fue posible interpretar:
+
+$stateFile
+
+El JSON del estado no es valido.
+"@
+}
+
+if ($state.module -ne "teachers") {
+    throw @"
+El archivo de estado no pertenece al modulo Teachers.
+
+Modulo encontrado:
+$($state.module)
+"@
+}
+
+if (
+    -not $state.test `
+    -or $state.test.created_by_api_test -ne $true
+) {
+    throw @"
+El archivo de estado no contiene el marcador esperado:
+
+test.created_by_api_test = true
+
+Prueba cancelada.
+"@
+}
+
+$campusId = [string]$state.campus.id
+$teacherId = [string]$state.teacher.id
+$personId = [string]$state.teacher.person_id
+$employeeNumber = [string] `
+    $state.teacher.employee_number
+$teacherEmail = [string]$state.teacher.email
+
+if ([string]::IsNullOrWhiteSpace($campusId)) {
+    throw "El estado no contiene campus.id."
+}
+
+if ([string]::IsNullOrWhiteSpace($teacherId)) {
+    throw "El estado no contiene teacher.id."
+}
+
+if (
+    [string]::IsNullOrWhiteSpace(
+        $employeeNumber
     )
-
-    try {
-        $response = $ErrorRecord.Exception.Response
-
-        if ($null -eq $response) {
-            return $ErrorRecord.Exception.Message
-        }
-
-        $reader = New-Object System.IO.StreamReader(
-            $response.GetResponseStream()
-        )
-
-        $body = $reader.ReadToEnd()
-        $reader.Dispose()
-
-        return $body
-    }
-    catch {
-        return $ErrorRecord.Exception.Message
-    }
+) {
+    throw @"
+El estado no contiene:
+teacher.employee_number
+"@
 }
 
-Write-Host "1. Comprobando sesion autenticada..."
+if (
+    [string]::IsNullOrWhiteSpace(
+        $teacherEmail
+    )
+) {
+    throw "El estado no contiene teacher.email."
+}
+
+$headers = $global:authHeaders.Clone()
+
+$headers["Accept"] = "application/json"
+$headers["X-Campus-ID"] = $campusId
+
+Write-Host "   OK"
+Write-Host "   Campus ID:  $campusId"
+Write-Host "   Teacher ID: $teacherId"
+Write-Host "   Numero:     $employeeNumber"
+Write-Host ""
+
+Write-Host "2. Verificando sesion autenticada..."
 
 $currentUser = Invoke-RestMethod `
     -Uri "$backendUrl/api/auth/me" `
     -Method Get `
     -WebSession $global:webSession `
-    -Headers $global:authHeaders
+    -Headers $headers
 
+if (-not $currentUser.user) {
+    throw "La API no devolvio el usuario autenticado."
+}
+
+if (
+    [string]::IsNullOrWhiteSpace(
+        [string]$currentUser.user.email
+    )
+) {
+    throw "La API no devolvio el correo del usuario."
+}
+
+Write-Host "   OK"
 Write-Host "   Usuario: $($currentUser.user.email)"
+Write-Host ""
 
-Write-Host "2. Obteniendo planteles..."
+Write-Host "3. Consultando profesor preparado..."
 
-$campusResponse = Invoke-RestMethod `
-    -Uri "$backendUrl/api/campuses?is_active=1&per_page=20" `
+$showResponse = Invoke-RestMethod `
+    -Uri "$backendUrl/api/teachers/$teacherId" `
     -Method Get `
     -WebSession $global:webSession `
-    -Headers $global:authHeaders
+    -Headers $headers
 
-$campus = $campusResponse.data |
+if (-not $showResponse.data) {
+    throw "La API no devolvio data."
+}
+
+if (
+    [string]$showResponse.data.id `
+        -ne $teacherId
+) {
+    throw @"
+La API devolvio un profesor diferente.
+
+Esperado:
+$teacherId
+
+Recibido:
+$($showResponse.data.id)
+"@
+}
+
+Write-Host "   OK"
+
+if ($showResponse.data.person.full_name) {
+    Write-Host `
+        "   Nombre: $($showResponse.data.person.full_name)"
+}
+
+Write-Host ""
+
+Write-Host "4. Verificando plantel del profesor..."
+
+if (
+    [string]$showResponse.data.campus_id `
+        -ne $campusId
+) {
+    throw @"
+El profesor pertenece a otro plantel.
+
+Esperado:
+$campusId
+
+Recibido:
+$($showResponse.data.campus_id)
+"@
+}
+
+Write-Host "   OK"
+Write-Host ""
+
+Write-Host "5. Verificando numero de empleado..."
+
+if (
+    [string]$showResponse.data.employee_number `
+        -ne $employeeNumber
+) {
+    throw @"
+El numero de empleado no coincide.
+
+Esperado:
+$employeeNumber
+
+Recibido:
+$($showResponse.data.employee_number)
+"@
+}
+
+Write-Host "   OK"
+Write-Host "   Numero: $employeeNumber"
+Write-Host ""
+
+Write-Host "6. Verificando correo de la persona..."
+
+if (-not $showResponse.data.person) {
+    throw "La respuesta no contiene person."
+}
+
+if (
+    [string]$showResponse.data.person.email `
+        -ne $teacherEmail
+) {
+    throw @"
+El correo no coincide.
+
+Esperado:
+$teacherEmail
+
+Recibido:
+$($showResponse.data.person.email)
+"@
+}
+
+if (
+    -not [string]::IsNullOrWhiteSpace(
+        $personId
+    ) `
+    -and [string]$showResponse.data.person.id `
+        -ne $personId
+) {
+    throw @"
+El Person ID no coincide.
+
+Esperado:
+$personId
+
+Recibido:
+$($showResponse.data.person.id)
+"@
+}
+
+Write-Host "   OK"
+Write-Host "   Correo: $teacherEmail"
+Write-Host ""
+
+Write-Host "7. Actualizando profesor..."
+
+$professionalLicense = (
+    "CED-TEST-" +
+    $state.test.suffix
+)
+
+$updateBodyObject = @{
+    professional_license = $professionalLicense
+
+    status = "leave"
+
+    person = @{
+        first_name = "Profesor Actualizado"
+
+        phone = "5551000099"
+    }
+}
+
+$updateBody = $updateBodyObject |
+    ConvertTo-Json -Depth 10
+
+$updateResponse = Invoke-RestMethod `
+    -Uri "$backendUrl/api/teachers/$teacherId" `
+    -Method Patch `
+    -WebSession $global:webSession `
+    -Headers $headers `
+    -ContentType "application/json" `
+    -Body $updateBody
+
+if (-not $updateResponse.data) {
+    throw "El PATCH no devolvio data."
+}
+
+if (
+    [string]$updateResponse.data.id `
+        -ne $teacherId
+) {
+    throw @"
+El PATCH devolvio un profesor diferente.
+"@
+}
+
+if (
+    [string]$updateResponse.data.status `
+        -ne "leave"
+) {
+    throw @"
+El estado no fue actualizado.
+
+Esperado:
+leave
+
+Recibido:
+$($updateResponse.data.status)
+"@
+}
+
+if (
+    [string]$updateResponse.data.professional_license `
+        -ne $professionalLicense
+) {
+    throw @"
+La cedula profesional no fue actualizada.
+
+Esperado:
+$professionalLicense
+
+Recibido:
+$($updateResponse.data.professional_license)
+"@
+}
+
+if (
+    [string]$updateResponse.data.person.first_name `
+        -ne "Profesor Actualizado"
+) {
+    throw @"
+El nombre no fue actualizado.
+
+Esperado:
+Profesor Actualizado
+
+Recibido:
+$($updateResponse.data.person.first_name)
+"@
+}
+
+Write-Host "   OK"
+Write-Host "   PATCH procesado correctamente."
+Write-Host ""
+
+Write-Host "8. Verificando persistencia del PATCH..."
+
+$persistedResponse = Invoke-RestMethod `
+    -Uri "$backendUrl/api/teachers/$teacherId" `
+    -Method Get `
+    -WebSession $global:webSession `
+    -Headers $headers
+
+if (-not $persistedResponse.data) {
+    throw @"
+La consulta posterior al PATCH no devolvio data.
+"@
+}
+
+if (
+    [string]$persistedResponse.data.id `
+        -ne $teacherId
+) {
+    throw @"
+La consulta posterior devolvio otro profesor.
+"@
+}
+
+if (
+    [string]$persistedResponse.data.status `
+        -ne "leave"
+) {
+    throw @"
+El estado actualizado no fue persistido.
+
+Esperado:
+leave
+
+Recibido:
+$($persistedResponse.data.status)
+"@
+}
+
+if (
+    [string]$persistedResponse.data.professional_license `
+        -ne $professionalLicense
+) {
+    throw @"
+La cedula profesional no fue persistida.
+
+Esperado:
+$professionalLicense
+
+Recibido:
+$($persistedResponse.data.professional_license)
+"@
+}
+
+if (
+    [string]$persistedResponse.data.person.first_name `
+        -ne "Profesor Actualizado"
+) {
+    throw @"
+El nombre actualizado no fue persistido.
+
+Esperado:
+Profesor Actualizado
+
+Recibido:
+$($persistedResponse.data.person.first_name)
+"@
+}
+
+if (
+    [string]$persistedResponse.data.person.phone `
+        -ne "5551000099"
+) {
+    throw @"
+El telefono actualizado no fue persistido.
+
+Esperado:
+5551000099
+
+Recibido:
+$($persistedResponse.data.person.phone)
+"@
+}
+
+Write-Host "   OK"
+Write-Host "   Estado:   $($persistedResponse.data.status)"
+Write-Host (
+    "   Cedula:   " +
+    $persistedResponse.data.professional_license
+)
+Write-Host (
+    "   Nombre:   " +
+    $persistedResponse.data.person.first_name
+)
+Write-Host (
+    "   Telefono: " +
+    $persistedResponse.data.person.phone
+)
+Write-Host ""
+
+Write-Host "9. Buscando profesor por numero..."
+
+$encodedEmployeeNumber = [System.Uri]::EscapeDataString(
+    $employeeNumber
+)
+
+$searchResponse = Invoke-RestMethod `
+    -Uri (
+        "$backendUrl/api/teachers" +
+        "?search=$encodedEmployeeNumber" +
+        "&per_page=20"
+    ) `
+    -Method Get `
+    -WebSession $global:webSession `
+    -Headers $headers
+
+$searchMatch = $searchResponse.data |
+    Where-Object {
+        [string]$_.id -eq $teacherId
+    } |
     Select-Object -First 1
 
-if (-not $campus) {
-    throw "No existe ningun plantel activo."
+if (-not $searchMatch) {
+    throw @"
+El profesor no aparecio al buscarlo por numero.
+
+Numero:
+$employeeNumber
+"@
 }
 
-$campusId = [string]$campus.id
+Write-Host "   OK"
+Write-Host ""
 
-Write-Host "   Plantel: $($campus.name)"
-Write-Host "   Campus ID: $campusId"
+Write-Host "10. Verificando filtro status=leave..."
 
-$teacherHeaders = $global:authHeaders.Clone()
-$teacherHeaders["X-Campus-ID"] = $campusId
+$leaveResponse = Invoke-RestMethod `
+    -Uri (
+        "$backendUrl/api/teachers" +
+        "?status=leave" +
+        "&per_page=100"
+    ) `
+    -Method Get `
+    -WebSession $global:webSession `
+    -Headers $headers
 
-$uniqueSuffix = Get-Date -Format "yyyyMMddHHmmss"
-$employeeNumber = "TEST-PROF-$uniqueSuffix"
+$leaveMatch = $leaveResponse.data |
+    Where-Object {
+        [string]$_.id -eq $teacherId
+    } |
+    Select-Object -First 1
 
-$createBody = @{
-    campus_id = $campusId
-    employee_number = $employeeNumber
-    professional_license = $null
-    hired_on = (Get-Date).ToString("yyyy-MM-dd")
-    terminated_on = $null
-    status = "active"
-    person = @{
-        first_name = "Profesor"
-        middle_name = "Temporal"
-        paternal_surname = "Prueba"
-        maternal_surname = "API"
-        curp = $null
-        birth_date = "1985-05-20"
-        sex = "unspecified"
-        email = "profesor.$uniqueSuffix@example.test"
-        phone = "5551000000"
-        emergency_phone = "5551000001"
-        additional_data = @{
-            is_api_test = $true
-        }
+if (-not $leaveMatch) {
+    throw @"
+El profesor no aparecio en:
+
+status=leave
+"@
+}
+
+Write-Host "   OK"
+Write-Host ""
+
+Write-Host "11. Verificando que no aparezca como active..."
+
+$activeResponse = Invoke-RestMethod `
+    -Uri (
+        "$backendUrl/api/teachers" +
+        "?status=active" +
+        "&per_page=100"
+    ) `
+    -Method Get `
+    -WebSession $global:webSession `
+    -Headers $headers
+
+$activeMatch = $activeResponse.data |
+    Where-Object {
+        [string]$_.id -eq $teacherId
+    } |
+    Select-Object -First 1
+
+if ($activeMatch) {
+    throw @"
+El profesor aparecio incorrectamente en:
+
+status=active
+"@
+}
+
+Write-Host "   OK"
+Write-Host ""
+
+Write-Host "12. Verificando acceso sin X-Campus-ID..."
+
+$isolatedSession = New-Object `
+    Microsoft.PowerShell.Commands.WebRequestSession
+
+$backendUri = [System.Uri]$backendUrl
+
+$global:webSession.Cookies.GetCookies(
+    $backendUri
+) |
+    ForEach-Object {
+        $cookieCopy = New-Object `
+            System.Net.Cookie(
+                $_.Name,
+                $_.Value,
+                $_.Path,
+                $_.Domain
+            )
+
+        $isolatedSession.Cookies.Add(
+            $cookieCopy
+        )
     }
-} | ConvertTo-Json -Depth 10
 
-$teacherId = $null
-$testCompleted = $false
+$isolatedHeaders = @{
+    "Accept" = "application/json"
+    "Origin" = "http://127.0.0.1:4200"
+    "Referer" = "http://127.0.0.1:4200/"
+}
+
+Remove-Variable missingCampusResponse `
+    -ErrorAction SilentlyContinue
+
+$missingCampusConfirmed = $false
 
 try {
-    Write-Host "3. Creando profesor..."
-
-    $createdResponse = Invoke-RestMethod `
-        -Uri "$backendUrl/api/teachers" `
-        -Method Post `
-        -WebSession $global:webSession `
-        -Headers $teacherHeaders `
-        -ContentType "application/json" `
-        -Body $createBody
-
-    $teacher = $createdResponse.data
-    $teacherId = [string]$teacher.id
-
-    if ([string]::IsNullOrWhiteSpace($teacherId)) {
-        throw "La API no devolvio el UUID del profesor."
-    }
-
-    Write-Host "   Profesor creado: $teacherId"
-    Write-Host "   Numero: $($teacher.employee_number)"
-    Write-Host "   Nombre: $($teacher.person.full_name)"
-
-    Write-Host "4. Verificando que la sesion siga activa..."
-
-    $currentUser = Invoke-RestMethod `
-        -Uri "$backendUrl/api/auth/me" `
-        -Method Get `
-        -WebSession $global:webSession `
-        -Headers $global:authHeaders
-
-    Write-Host "   Sesion activa: $($currentUser.user.email)"
-
-    Write-Host "5. Consultando profesor..."
-
-    $showResponse = Invoke-RestMethod `
+    $missingCampusResponse = Invoke-WebRequest `
         -Uri "$backendUrl/api/teachers/$teacherId" `
         -Method Get `
-        -WebSession $global:webSession `
-        -Headers $teacherHeaders
+        -WebSession $isolatedSession `
+        -Headers $isolatedHeaders `
+        -UseBasicParsing
 
-    if ($showResponse.data.id -ne $teacherId) {
-        throw "La consulta devolvio un profesor diferente."
-    }
+    throw @"
+La API permitio consultar el profesor sin X-Campus-ID.
 
-    if (
-        $showResponse.data.campus_id `
-            -ne $campusId
-    ) {
-        throw "El profesor pertenece a otro plantel."
-    }
+HTTP recibido:
+$($missingCampusResponse.StatusCode)
 
-    Write-Host "   Profesor consultado correctamente."
-    Write-Host "   Correo: $($showResponse.data.person.email)"
-
-    Write-Host "6. Actualizando profesor..."
-
-    $updateBody = @{
-        professional_license = "CED-TEST-$uniqueSuffix"
-        status = "leave"
-        person = @{
-            first_name = "Profesor Actualizado"
-            phone = "5551000099"
-        }
-    } | ConvertTo-Json -Depth 10
-
-    $updatedResponse = Invoke-RestMethod `
-        -Uri "$backendUrl/api/teachers/$teacherId" `
-        -Method Patch `
-        -WebSession $global:webSession `
-        -Headers $teacherHeaders `
-        -ContentType "application/json" `
-        -Body $updateBody
-
-    if ($updatedResponse.data.status -ne "leave") {
-        throw "El estado del profesor no fue actualizado."
-    }
-
-    if (
-        $updatedResponse.data.professional_license `
-            -ne "CED-TEST-$uniqueSuffix"
-    ) {
-        throw "La cedula profesional no fue actualizada."
-    }
-
-    if (
-        $updatedResponse.data.person.first_name `
-            -ne "Profesor Actualizado"
-    ) {
-        throw "El nombre del profesor no fue actualizado."
-    }
-
-    if (
-        $updatedResponse.data.person.phone `
-            -ne "5551000099"
-    ) {
-        throw "El telefono del profesor no fue actualizado."
-    }
-
-    Write-Host "   Profesor actualizado correctamente."
-
-    Write-Host "7. Buscando profesor en el listado..."
-
-    $encodedSearch = [Uri]::EscapeDataString(
-        $employeeNumber
-    )
-
-    $listResponse = Invoke-RestMethod `
-        -Uri "$backendUrl/api/teachers?search=$encodedSearch&per_page=10" `
-        -Method Get `
-        -WebSession $global:webSession `
-        -Headers $teacherHeaders
-
-    $listedTeacher = $listResponse.data |
-        Where-Object {
-            $_.id -eq $teacherId
-        } |
-        Select-Object -First 1
-
-    if (-not $listedTeacher) {
-        throw "El profesor no aparecio en el listado filtrado."
-    }
-
-    Write-Host "   Profesor encontrado mediante busqueda."
-
-    Write-Host "8. Eliminando profesor temporal..."
-
-    Invoke-RestMethod `
-        -Uri "$backendUrl/api/teachers/$teacherId" `
-        -Method Delete `
-        -WebSession $global:webSession `
-        -Headers $teacherHeaders |
-        Out-Null
-
-    Write-Host "   Profesor eliminado."
-
-    Write-Host "9. Confirmando eliminacion..."
-
-    $notFoundConfirmed = $false
-
-    try {
-        Invoke-RestMethod `
-            -Uri "$backendUrl/api/teachers/$teacherId" `
-            -Method Get `
-            -WebSession $global:webSession `
-            -Headers $teacherHeaders |
-            Out-Null
-    }
-    catch {
-        if (
-            $_.Exception.Response `
-            -and [int]$_.Exception.Response.StatusCode -eq 404
-        ) {
-            $notFoundConfirmed = $true
-        }
-        else {
-            throw
-        }
-    }
-
-    if (-not $notFoundConfirmed) {
-        throw "El profesor eliminado todavia puede consultarse."
-    }
-
-    Write-Host "   Eliminacion confirmada."
-
-    $teacherId = $null
-    $testCompleted = $true
+Se esperaba HTTP 422.
+"@
 }
 catch {
-    Write-Host ""
-    Write-Host "La prueba de profesores fallo." `
-        -ForegroundColor Red
-
-    Write-Host (
-        Get-ErrorResponseBody -ErrorRecord $_
-    ) -ForegroundColor Red
-
-    throw
-}
-finally {
-    # Si la prueba falla despues de crear el profesor,
-    # se intenta eliminar automaticamente.
-
-    if ($teacherId) {
-        Write-Host ""
-        Write-Host "Intentando limpiar el profesor temporal..." `
-            -ForegroundColor Yellow
-
-        try {
-            Invoke-RestMethod `
-                -Uri "$backendUrl/api/teachers/$teacherId" `
-                -Method Delete `
-                -WebSession $global:webSession `
-                -Headers $teacherHeaders |
-                Out-Null
-
-            Write-Host "Profesor temporal eliminado." `
-                -ForegroundColor Yellow
-        }
-        catch {
-            Write-Host "No fue posible eliminar automaticamente el profesor $teacherId." `
-                -ForegroundColor Red
-        }
+    if (
+        $_.Exception.Response `
+        -and [int]$_.Exception.Response.StatusCode `
+            -eq 422
+    ) {
+        $missingCampusConfirmed = $true
+    }
+    elseif (
+        $_.Exception.Message -like `
+            "La API permitio consultar*"
+    ) {
+        throw
+    }
+    else {
+        throw
     }
 }
 
-if ($testCompleted) {
-    Write-Host ""
-    Write-Host "PRUEBA DE PROFESORES COMPLETADA CORRECTAMENTE" `
-        -ForegroundColor Green
-    Write-Host "Crear:      OK"
-    Write-Host "Sesion:     OK"
-    Write-Host "Consultar:  OK"
-    Write-Host "Actualizar: OK"
-    Write-Host "Buscar:     OK"
-    Write-Host "Eliminar:   OK"
+if (-not $missingCampusConfirmed) {
+    throw @"
+No fue posible confirmar HTTP 422 sin X-Campus-ID.
+"@
 }
+
+Write-Host "   OK"
+Write-Host "   HTTP 422 confirmado."
+Write-Host ""
+
+Write-Host "13. Confirmando que el profesor sigue preservado..."
+
+$finalResponse = Invoke-RestMethod `
+    -Uri "$backendUrl/api/teachers/$teacherId" `
+    -Method Get `
+    -WebSession $global:webSession `
+    -Headers $headers
+
+if (
+    -not $finalResponse.data `
+    -or [string]$finalResponse.data.id `
+        -ne $teacherId
+) {
+    throw @"
+El profesor temporal ya no esta disponible.
+
+Test-TeachersApi.ps1 no debe eliminarlo.
+"@
+}
+
+Write-Host "   OK"
+Write-Host "   Profesor temporal preservado."
+Write-Host ""
+
+Write-Host "========================================"
+Write-Host " RESULTADO: MODULO TEACHERS OK"
+Write-Host "========================================"
+Write-Host ""
+Write-Host "Modulo:                  TEACHERS"
+Write-Host "Sesion autenticada:      OK"
+Write-Host "Carga de estado:         OK"
+Write-Host "Consulta:                OK"
+Write-Host "Plantel:                 OK"
+Write-Host "Numero de empleado:      OK"
+Write-Host "Correo:                   OK"
+Write-Host "Actualizacion PATCH:     OK"
+Write-Host "Persistencia update:     OK"
+Write-Host "Telefono persistido:     OK"
+Write-Host "Busqueda:                OK"
+Write-Host "Filtro leave:            OK"
+Write-Host "Filtro active:           OK"
+Write-Host "Campus requerido:        OK"
+Write-Host "Registro preservado:     OK"
+Write-Host ""
+Write-Host "Teacher ID:"
+Write-Host $teacherId
+Write-Host ""
+Write-Host "El profesor NO fue eliminado."
+Write-Host ""
+Write-Host (
+    "La eliminacion se realizara posteriormente " +
+    "con Cleanup-TeachersTestData.ps1."
+)
+Write-Host ""

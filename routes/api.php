@@ -161,22 +161,34 @@ Route::middleware('auth:sanctum')
         Route::get(
             '/{student}',
             [StudentController::class, 'show']
-        )->middleware('permission:students.view');
+        )->middleware([
+            'campus',
+            'permission:students.view',
+        ]);
 
         Route::put(
             '/{student}',
             [StudentController::class, 'update']
-        )->middleware('permission:students.update');
+        )->middleware([
+            'campus',
+            'permission:students.update',
+        ]);
 
         Route::patch(
             '/{student}',
             [StudentController::class, 'update']
-        )->middleware('permission:students.update');
+        )->middleware([
+            'campus',
+            'permission:students.update',
+        ]);
 
         Route::delete(
             '/{student}',
             [StudentController::class, 'destroy']
-        )->middleware('permission:students.delete');
+        )->middleware([
+            'campus',
+            'permission:students.delete',
+        ]);
     });
 
 Route::middleware([
